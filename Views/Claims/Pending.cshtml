@@ -1,0 +1,51 @@
+﻿@model IEnumerable<CMCS.Web.Models.Claim>
+@{
+    ViewData["Title"] = "Pending Claims";
+}
+
+<h2>Pending Claims</h2>
+
+<table class="table table-hover">
+    <thead class="table-light">
+        <tr>
+            <th>Lecturer</th>
+            <th>Date</th>
+            <th>Hours</th>
+            <th>Rate</th>
+            <th>Amount</th>
+            <th>Notes</th>
+            <th>Documents</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var c in Model)
+        {
+            <tr>
+                <td>@(c.Lecturer?.FullName ?? "N/A")</td>
+                <td>@c.ClaimDate.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                <td>@c.HoursWorked</td>
+                <td>@c.HourlyRate:C2</td>
+                <td>@(c.HoursWorked* c.HourlyRate):C2</td>
+                <td>@(c.Notes ?? "")</td>
+                <td>
+                    @foreach (var d in c.Documents)
+                    {
+                        <div><a href="@Url.Action("DownloadDoc", "Claims", new { id = d.SupportingDocumentId })">@d.FileName</a></div>
+                    }
+                </td>
+                <td>
+                    <form asp-action="Approve" method="post" style="display:inline">
+                        <input type="hidden" name="id" value="@c.ClaimId" />
+                        <button type="submit" class="btn btn-sm btn-success mb-1">Approve</button>
+                    </form>
+                    <form asp-action="Reject" method="post" style="display:inline">
+                        <input type="hidden" name="id" value="@c.ClaimId" />
+                        <input class="form-control form-control-sm mb-1" name="reason" placeholder="Rejection reason (optional)" />
+                        <button type="submit" class="btn btn-sm btn-danger">Reject</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

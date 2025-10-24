@@ -1,0 +1,39 @@
+﻿@{
+    ViewData["Title"] = "Submit Claim";
+    var lecturerId = (int)ViewBag.LecturerId;
+}
+
+<h2>Submit Claim</h2>
+
+<div class="card">
+    <div class="card-body">
+        <form asp-action="Create" method="post" enctype="multipart/form-data" class="row g-3">
+            <input type="hidden" name="lecturerId" value="@lecturerId" />
+
+            <div class="col-md-4">
+                <label class="form-label">Hours Worked</label>
+                <input class="form-control" type="number" name="hoursWorked" step="0.1" min="0.1" required />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Hourly Rate (ZAR)</label>
+                <input class="form-control" type="number" name="hourlyRate" step="0.01" min="0" required />
+            </div>
+
+            <div class="col-12">
+                <label class="form-label">Notes (optional)</label>
+                <textarea class="form-control" name="notes" rows="3"></textarea>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label">Supporting Documents (pdf, docx, xlsx) - max 5MB each</label>
+                <input class="form-control" type="file" name="files" multiple />
+            </div>
+
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Submit Claim</button>
+                <a class="btn btn-secondary" href="/Claims/MyClaims?lecturerId=@lecturerId">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
