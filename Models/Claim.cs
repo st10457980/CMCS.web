@@ -16,12 +16,16 @@ namespace CMCS.Web.Models
         public DateTime ClaimDate { get; set; } = DateTime.UtcNow;
 
         [Required]
-        [Range(0.1, 1000)]
+        [Range(0.1, 10000)]
         public decimal HoursWorked { get; set; }
 
         [Required]
         [Range(0.0, 100000)]
         public decimal HourlyRate { get; set; }
+
+        // NEW: store computed amount
+        [DataType(DataType.Currency)]
+        public decimal Amount { get; set; }
 
         public string? Notes { get; set; }
 

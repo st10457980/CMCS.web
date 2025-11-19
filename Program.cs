@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();                // <-- register MVC controllers + views
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=cmcs.db"));
+builder.Services.AddSingleton<CMCS.Web.Services.ClaimAutomationService>();
 
 var app = builder.Build();
 

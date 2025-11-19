@@ -12,12 +12,17 @@
 
             <div class="col-md-4">
                 <label class="form-label">Hours Worked</label>
-                <input class="form-control" type="number" name="hoursWorked" step="0.1" min="0.1" required />
+                <input id="hoursWorked" class="form-control" type="number" name="hoursWorked" step="0.1" min="0.1" required />
             </div>
 
             <div class="col-md-4">
                 <label class="form-label">Hourly Rate (ZAR)</label>
-                <input class="form-control" type="number" name="hourlyRate" step="0.01" min="0" required />
+                <input id="hourlyRate" class="form-control" type="number" name="hourlyRate" step="0.01" min="0" required />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Computed Amount (ZAR)</label>
+                <input id="computedAmount" class="form-control" type="text" readonly value="0.00" />
             </div>
 
             <div class="col-12">
@@ -31,9 +36,32 @@
             </div>
 
             <div class="col-12">
-                <button type="submit" class="btn btn-primary">Submit Claim</button>
+                <button id="submitBtn" type="submit" class="btn btn-primary">Submit Claim</button>
                 <a class="btn btn-secondary" href="/Claims/MyClaims?lecturerId=@lecturerId">Cancel</a>
             </div>
         </form>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        (function(){
+            const hours = document.getElementById('hoursWorked');
+            const rate = document.getElementById('hourlyRate');
+            const amount = document.getElementById('computedAmount');
+
+            function compute() {
+                const h = parseFloat(hours.value || 0);
+                const r = parseFloat(rate.value || 0);
+                const a = (h * r).toFixed(2);
+                amount.value = a;
+            }
+
+            hours.addEventListener('input', compute);
+            rate.addEventListener('input', compute);
+
+            // compute on page load
+            compute();
+        })();
+    </script>
+}

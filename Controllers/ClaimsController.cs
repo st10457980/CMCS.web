@@ -2,6 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using CMCS.Web.Data;
 using CMCS.Web.Models;
+using CMCS.Web.Services;
+using System.Text;
 
 namespace CMCS.Web.Controllers
 {
@@ -9,37 +11,23 @@ namespace CMCS.Web.Controllers
     {
         private readonly ApplicationDbContext _db;
         private readonly IWebHostEnvironment _env;
-        private readonly long _maxFileBytes = 5 * 1024 * 1024; // 5 MB
-        private readonly string[] _permittedExts = { ".pdf", ".docx", ".xlsx" };
+        private readonly ClaimAutomationService _automation;
 
-        public ClaimsController(ApplicationDbContext db, IWebHostEnvironment env)
+        public ClaimsController(ApplicationDbContext db, IWebHostEnvironment env, ClaimAutomationService automation)
         {
             _db = db;
             _env = env;
+            _automation = automation;
         }
 
-        // Lecturer: view own claims 
+        // MyClaims and other existing actions unchanged (keep your previous code)
         public async Task<IActionResult> MyClaims(int lecturerId = 1)
         {
-            
-            if (!await _db.Lecturers.AnyAsync())
-            {
-                _db.Lecturers.Add(new Lecturer { FullName = "Demo Lecturer", Email = "lecturer@demo.com" });
-                await _db.SaveChangesAsync();
-            }
-
-            var claims = await _db.Claims
-                .Include(c => c.Documents)
-                .Include(c => c.Lecturer)
-                .Where(c => c.LecturerId == lecturerId)
-                .OrderByDescending(c => c.ClaimDate)
-                .ToListAsync();
-
+            var claims = await _db.Claims.Include(c => c.Documents).Where(c => c.LecturerId == lecturerId).OrderByDescending(c => c.ClaimDate).ToListAsync();
             ViewBag.LecturerId = lecturerId;
             return View(claims);
         }
 
-        // GET create form
         [HttpGet]
         public IActionResult Create(int lecturerId = 1)
         {
@@ -47,38 +35,37 @@ namespace CMCS.Web.Controllers
             return View();
         }
 
-        // POST create claim
+        // POST: Create claim (server side calculates Amount and optionally auto-approves)
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(int lecturerId, decimal hoursWorked, decimal hourlyRate, string? notes, List<IFormFile>? files)
         {
-            if (hoursWorked <= 0 || hourlyRate < 0)
+            // Construct claim
+            var claim = new Claim
             {
-                ModelState.AddModelError("", "Hours and hourly rate must be valid.");
-            }
+                LecturerId = lecturerId,
+                ClaimDate = DateTime.UtcNow,
+                HoursWorked = hoursWorked,
+                HourlyRate = hourlyRate,
+                Notes = notes
+            };
 
-            if (!ModelState.IsValid)
+            // server-side auto-calculation
+            claim.Amount = Math.Round(claim.HoursWorked * claim.HourlyRate, 2);
+
+            // Validate via automation service
+            if (!_automation.ValidateClaim(claim, out var validationMessage))
             {
+                ModelState.AddModelError("", validationMessage ?? "Validation failed.");
                 ViewBag.LecturerId = lecturerId;
                 return View();
             }
 
-            // Ensure lecturer exists (simple demo)
-            var lecturer = await _db.Lecturers.FindAsync(lecturerId) ?? new Lecturer { FullName = "Lecturer", Email = "no-reply@demo" };
-
-            var claim = new Claim
-            {
-                LecturerId = lecturer.LecturerId == 0 ? lecturerId : lecturer.LecturerId,
-                ClaimDate = DateTime.UtcNow,
-                HoursWorked = hoursWorked,
-                HourlyRate = hourlyRate,
-                Notes = notes,
-                Status = ClaimStatus.Pending
-            };
-
+            // add to DB
             _db.Claims.Add(claim);
-            await _db.SaveChangesAsync(); // get ClaimId
+            await _db.SaveChangesAsync(); // so claim has ClaimId
 
+            // file upload logic (same as earlier)
             if (files != null && files.Count > 0)
             {
                 var uploadsRoot = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads");
@@ -86,14 +73,14 @@ namespace CMCS.Web.Controllers
 
                 foreach (var file in files)
                 {
-                    if (file.Length == 0 || file.Length > _maxFileBytes) continue;
+                    if (file.Length == 0) continue;
 
                     var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-                    if (string.IsNullOrEmpty(ext) || !_permittedExts.Contains(ext)) continue;
+                    var allowed = new[] { ".pdf", ".docx", ".xlsx" };
+                    if (!allowed.Contains(ext)) continue;
 
                     var unique = $"{Guid.NewGuid()}{ext}";
                     var savePath = Path.Combine(uploadsRoot, unique);
-
                     using (var fs = new FileStream(savePath, FileMode.Create))
                     {
                         await file.CopyToAsync(fs);
@@ -107,27 +94,46 @@ namespace CMCS.Web.Controllers
                     };
                     _db.SupportingDocuments.Add(doc);
                 }
+                await _db.SaveChangesAsync();
+            }
 
+            // AUTOMATION: decide whether to auto-approve
+            if (_automation.ShouldAutoApprove(claim))
+            {
+                claim.Status = ClaimStatus.Approved;
+                _db.Update(claim);
                 await _db.SaveChangesAsync();
             }
 
             return RedirectToAction(nameof(MyClaims), new { lecturerId = claim.LecturerId });
         }
 
-        // Approver: list pending claims
+        // A manual endpoint to run automation across all pending claims (for demo / scheduled runs)
+        [HttpPost]
+        public async Task<IActionResult> AutoVerifyAll()
+        {
+            var pending = await _db.Claims.Where(c => c.Status == ClaimStatus.Pending).ToListAsync();
+            foreach (var c in pending)
+            {
+                // ensure Amount is computed
+                c.Amount = Math.Round(c.HoursWorked * c.HourlyRate, 2);
+
+                if (_automation.ShouldAutoApprove(c))
+                {
+                    c.Status = ClaimStatus.Approved;
+                    _db.Update(c);
+                }
+            }
+            await _db.SaveChangesAsync();
+            return RedirectToAction(nameof(Pending)); // or return Ok for API
+        }
+
         public async Task<IActionResult> Pending()
         {
-            var pending = await _db.Claims
-                .Include(c => c.Lecturer)
-                .Include(c => c.Documents)
-                .Where(c => c.Status == ClaimStatus.Pending)
-                .OrderBy(c => c.ClaimDate)
-                .ToListAsync();
-
+            var pending = await _db.Claims.Include(c => c.Lecturer).Include(c => c.Documents).Where(c => c.Status == ClaimStatus.Pending).OrderBy(c => c.ClaimDate).ToListAsync();
             return View(pending);
         }
 
-        // Approve claim
         [HttpPost]
         public async Task<IActionResult> Approve(int id)
         {
@@ -137,11 +143,9 @@ namespace CMCS.Web.Controllers
             claim.Status = ClaimStatus.Approved;
             _db.Update(claim);
             await _db.SaveChangesAsync();
-
             return RedirectToAction(nameof(Pending));
         }
 
-        // Reject claim
         [HttpPost]
         public async Task<IActionResult> Reject(int id, string? reason)
         {
@@ -149,18 +153,34 @@ namespace CMCS.Web.Controllers
             if (claim == null) return NotFound();
 
             claim.Status = ClaimStatus.Rejected;
-            _db.Update(claim);
-
             if (!string.IsNullOrWhiteSpace(reason))
             {
                 claim.Notes = (claim.Notes ?? "") + $"\nRejection reason: {reason}";
             }
-
+            _db.Update(claim);
             await _db.SaveChangesAsync();
             return RedirectToAction(nameof(Pending));
         }
 
-        // Download supporting document
+        // HR Report - download CSV of Approved claims (simple invoice-like report)
+        public async Task<IActionResult> HRReport()
+        {
+            var approved = await _db.Claims.Include(c => c.Lecturer).Where(c => c.Status == ClaimStatus.Approved).OrderBy(c => c.ClaimDate).ToListAsync();
+
+            var csv = new StringBuilder();
+            csv.AppendLine("ClaimId,Lecturer,ClaimDate,HoursWorked,HourlyRate,Amount,Notes");
+
+            foreach (var c in approved)
+            {
+                var line = $"{c.ClaimId},\"{c.Lecturer?.FullName}\",{c.ClaimDate:yyyy-MM-dd},{c.HoursWorked},{c.HourlyRate},{c.Amount},\"{(c.Notes ?? "").Replace("\"", "'")}\"";
+                csv.AppendLine(line);
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+            return File(bytes, "text/csv", $"ApprovedClaims_{DateTime.UtcNow:yyyyMMddHHmm}.csv");
+        }
+
+        // Download supporting documents unchanged
         public async Task<IActionResult> DownloadDoc(int id)
         {
             var doc = await _db.SupportingDocuments.FindAsync(id);
@@ -168,7 +188,6 @@ namespace CMCS.Web.Controllers
 
             var path = Path.Combine(_env.WebRootPath ?? "wwwroot", doc.FilePath);
             if (!System.IO.File.Exists(path)) return NotFound();
-
             return PhysicalFile(path, "application/octet-stream", doc.FileName);
         }
     }

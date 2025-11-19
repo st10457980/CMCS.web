@@ -159,3 +159,4 @@ C:\Users\RC_Student_Lab\Downloads\CMCS.web\CMCS.web\obj\Debug\net8.0\CMCS.web.pd
 C:\Users\RC_Student_Lab\Downloads\CMCS.web\CMCS.web\obj\Debug\net8.0\CMCS.web.genruntimeconfig.cache
 C:\Users\RC_Student_Lab\Downloads\CMCS.web\CMCS.web\obj\Debug\net8.0\ref\CMCS.web.dll
 C:\Users\RC_Student_Lab\Downloads\CMCS.web\CMCS.web\obj\Debug\net8.0\CMCS.web.sourcelink.json
+C:\Users\RC_Student_Lab\Downloads\CMCS.web\CMCS.web\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
